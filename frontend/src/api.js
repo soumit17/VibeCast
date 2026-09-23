@@ -1,4 +1,4 @@
-const TOKEN_KEY = "soundtrack_token";
+const TOKEN_KEY = "vibecast_token";
 
 export function getToken() {
   try {
@@ -101,6 +101,7 @@ export const api = {
   djSuggest: (roomId) => request(`/api/rooms/${roomId}/dj/suggest`, { method: "POST", auth: true }),
 
   mood: (payload) => request("/api/me/mood", { method: "POST", body: payload }),
+  getPlaylist: () => request("/api/me/playlist", { auth: true }),
 };
 
 export function roomSocketUrl(roomId) {

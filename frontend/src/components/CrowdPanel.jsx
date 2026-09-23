@@ -29,7 +29,7 @@ export default function CrowdPanel({ crowd }) {
           </span>
         </div>
         <div className="meter">
-          <div className="meter-fill" style={{ width: `${(crowd.energy_level || 0) * 100}%` }} />
+          <div className="meter-fill" style={{ "--meter": crowd.energy_level || 0 }} />
         </div>
       </div>
 

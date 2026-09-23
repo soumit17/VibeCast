@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAuth } from "../context/AuthContext";
 import { api } from "../api";
-import { AmbientEngine } from "../audio/ambient";
+import { TrackPlayer, MicMonitor } from "../audio/player";
 import Visualizer from "../components/Visualizer";
 import ShareCard from "../components/ShareCard";
 
@@ -9,7 +9,8 @@ const MOOD_INTERVAL_MS = 20000;
 
 export default function PersonalDashboard() {
   const { user, refresh } = useAuth();
-  const engineRef = useRef(null);
+  const playerRef = useRef(null);
+  const micRef = useRef(null);
   const videoRef = useRef(null);
   const snapshotCanvasRef = useRef(null);
   const watchIdRef = useRef(null);
@@ -25,8 +26,15 @@ export default function PersonalDashboard() {
   const [moodLoading, setMoodLoading] = useState(false);
   const [connectingMusic, setConnectingMusic] = useState(false);
 
+  const [playlist, setPlaylist] = useState([]);
+  const [trackIndex, setTrackIndex] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [playlistLoading, setPlaylistLoading] = useState(false);
+
   useEffect(() => {
-    engineRef.current = new AmbientEngine();
+    playerRef.current = new TrackPlayer();
+    micRef.current = new MicMonitor();
+    playerRef.current.onEnded(() => playNextTrack());
     return () => {
       stopExperience();
       // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -46,18 +54,16 @@ export default function PersonalDashboard() {
   }
 
   async function fetchMood() {
-    const engine = engineRef.current;
     setMoodLoading(true);
     try {
       const payload = {
-        mic_energy: engine ? engine.getMicEnergy() : 0,
+        mic_energy: micRef.current ? micRef.current.getEnergy() : 0,
         camera_frame_base64: captureFrameBase64(),
         lat: coords?.lat,
         lon: coords?.lon,
       };
       const result = await api.mood(payload);
       setMood(result);
-      engine?.setMood(result);
     } catch {
       // mood fusion has server-side fallback already; a network failure here
       // just means the last mood reading stays in place.
@@ -66,14 +72,58 @@ export default function PersonalDashboard() {
     }
   }
 
+  async function playAtIndex(index, tracks) {
+    const list = tracks || playlist;
+    if (!list.length) return;
+    const wrapped = ((index % list.length) + list.length) % list.length;
+    setTrackIndex(wrapped);
+    try {
+      await playerRef.current.load(list[wrapped].preview_url);
+      setIsPlaying(true);
+    } catch {
+      // Autoplay can be blocked outside a user gesture; the play/pause
+      // button lets the user resume manually.
+      setIsPlaying(false);
+    }
+  }
+
+  function playNextTrack() {
+    playAtIndex(trackIndex + 1);
+  }
+
+  function playPrevTrack() {
+    playAtIndex(trackIndex - 1);
+  }
+
+  function togglePlayPause() {
+    if (isPlaying) {
+      playerRef.current.pause();
+      setIsPlaying(false);
+    } else {
+      playerRef.current.resume().then(() => setIsPlaying(true)).catch(() => {});
+    }
+  }
+
   async function startExperience() {
     setError("");
-    const engine = engineRef.current;
-    engine.start();
+    setPlaylistLoading(true);
+
+    let tracks = [];
+    try {
+      tracks = await api.getPlaylist();
+      setPlaylist(tracks);
+    } catch (err) {
+      setError(err.detail || "Could not build your playlist. Is your music library connected?");
+      setPlaylistLoading(false);
+      return;
+    }
+    setPlaylistLoading(false);
+
     setRunning(true);
+    await playAtIndex(0, tracks);
 
     try {
-      await engine.connectMic();
+      await micRef.current.connect();
       setPerms((p) => ({ ...p, mic: true }));
     } catch {
       setPerms((p) => ({ ...p, mic: false }));
@@ -102,7 +152,7 @@ export default function PersonalDashboard() {
     }
 
     function micLevelLoop() {
-      setMicLevel(engine.getMicEnergy());
+      setMicLevel(micRef.current ? micRef.current.getEnergy() : 0);
       micLevelRafRef.current = requestAnimationFrame(micLevelLoop);
     }
     micLevelLoop();
@@ -112,9 +162,10 @@ export default function PersonalDashboard() {
   }
 
   function stopExperience() {
-    const engine = engineRef.current;
-    engine?.stop();
+    playerRef.current?.stop();
+    micRef.current?.stop();
     setRunning(false);
+    setIsPlaying(false);
 
     if (videoRef.current?.srcObject) {
       videoRef.current.srcObject.getTracks().forEach((t) => t.stop());
@@ -147,6 +198,8 @@ export default function PersonalDashboard() {
     }
   }
 
+  const nowPlaying = playlist[trackIndex];
+
   return (
     <div className="container" style={{ paddingTop: 30, paddingBottom: 60 }}>
       <div className="page-title-row">
@@ -154,7 +207,7 @@ export default function PersonalDashboard() {
           <span className="eyebrow">Personal app</span>
           <h2 style={{ marginBottom: 4 }}>Soundtrack of the moment</h2>
           <p style={{ margin: 0 }}>
-            {user ? `Signed in as ${user.display_name}` : "Browsing anonymously — log in to save your taste profile."}
+            {user ? `Signed in as ${user.display_name}` : "Log in to build a soundtrack from your taste profile."}
           </p>
         </div>
         {running ? (
@@ -166,7 +219,34 @@ export default function PersonalDashboard() {
 
       <div className="grid-2">
         <div className="card card-elevated">
-          <Visualizer engine={engineRef.current} active={running} accentHue={340 - (mood?.valence ?? 0.5) * 120} />
+          <Visualizer engine={playerRef.current} active={running && isPlaying} accentHue={340 - (mood?.valence ?? 0.5) * 120} />
+
+          {nowPlaying && (
+            <div className="row" style={{ margin: "16px 0", alignItems: "center" }}>
+              {nowPlaying.cover_url ? (
+                <img src={nowPlaying.cover_url} alt="" style={{ width: 52, height: 52, borderRadius: 8 }} />
+              ) : (
+                <div style={{ width: 52, height: 52, borderRadius: 8, background: "var(--bg-elevated)" }} />
+              )}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {nowPlaying.title}
+                </div>
+                <div style={{ fontSize: "0.8rem", color: "var(--text-dim)" }}>{nowPlaying.artist}</div>
+              </div>
+              <div className="row">
+                <button className="btn btn-secondary btn-sm" onClick={playPrevTrack}>
+                  ◀
+                </button>
+                <button className="btn btn-primary btn-sm" onClick={togglePlayPause}>
+                  {isPlaying ? "Pause" : "Play"}
+                </button>
+                <button className="btn btn-secondary btn-sm" onClick={playNextTrack}>
+                  ▶
+                </button>
+              </div>
+            </div>
+          )}
 
           <div className="permission-grid">
             <div className={`perm-chip ${perms.mic ? "granted" : ""}`}>🎙 Mic {perms.mic ? "on" : "off"}</div>
@@ -174,9 +254,18 @@ export default function PersonalDashboard() {
             <div className={`perm-chip ${perms.gps ? "granted" : ""}`}>📍 GPS {perms.gps ? "on" : "off"}</div>
           </div>
 
-          {!running ? (
-            <button className="btn btn-primary btn-block" onClick={startExperience}>
-              Start the soundtrack
+          {!user ? (
+            <p style={{ fontSize: "0.85rem" }}>Log in on the nav above, then connect a music library below.</p>
+          ) : !user.music_connected ? (
+            <>
+              <p style={{ fontSize: "0.85rem" }}>Connect a music library to build a soundtrack from your taste profile.</p>
+              <button className="btn btn-primary btn-block" onClick={connectMusic} disabled={connectingMusic}>
+                {connectingMusic ? "Connecting…" : "Connect music library"}
+              </button>
+            </>
+          ) : !running ? (
+            <button className="btn btn-primary btn-block" onClick={startExperience} disabled={playlistLoading}>
+              {playlistLoading ? "Building your playlist…" : "Start the soundtrack"}
             </button>
           ) : (
             <button className="btn btn-secondary btn-block" onClick={stopExperience}>
@@ -193,15 +282,17 @@ export default function PersonalDashboard() {
                 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>{Math.round(micLevel * 100)}%</span>
               </div>
               <div className="meter">
-                <div className="meter-fill" style={{ width: `${micLevel * 100}%` }} />
+                <div className="meter-fill meter-fill-live" style={{ "--meter": micLevel }} />
               </div>
             </div>
           )}
 
-          <p style={{ fontSize: "0.75rem", marginTop: 14 }}>
-            Every ~20s, a camera snapshot and your mic level are sent for a one-off mood read — nothing is recorded
-            or streamed continuously.
-          </p>
+          {running && (
+            <p style={{ fontSize: "0.75rem", marginTop: 14 }}>
+              Every ~20s, a camera snapshot and your mic level are sent for a one-off mood read — nothing is recorded
+              or streamed continuously.
+            </p>
+          )}
           <video ref={videoRef} muted playsInline style={{ display: "none" }} />
           <canvas ref={snapshotCanvasRef} style={{ display: "none" }} />
         </div>
@@ -224,12 +315,7 @@ export default function PersonalDashboard() {
                   </div>
                 </div>
               ) : (
-                <>
-                  <p>Connect your library so venues can pull your real taste profile automatically.</p>
-                  <button className="btn btn-secondary btn-block" onClick={connectMusic} disabled={connectingMusic}>
-                    {connectingMusic ? "Connecting…" : "Connect music library"}
-                  </button>
-                </>
+                <p>Not connected yet — use the button in the player panel.</p>
               )
             ) : (
               <p>Log in to connect a music library and save your taste profile across venues.</p>
@@ -257,7 +343,7 @@ export default function PersonalDashboard() {
                         </span>
                       </div>
                       <div className="meter">
-                        <div className="meter-fill" style={{ width: `${value * 100}%` }} />
+                        <div className="meter-fill" style={{ "--meter": value }} />
                       </div>
                     </div>
                   ))}

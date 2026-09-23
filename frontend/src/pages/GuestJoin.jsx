@@ -132,7 +132,7 @@ export default function GuestJoin() {
           </form>
           {!user && (
             <p style={{ marginTop: 16, fontSize: "0.85rem" }}>
-              Already have a Soundtrack account? <Link to="/login">Log in first</Link> to skip straight to your saved
+              Already have a VibeCast account? <Link to="/login">Log in first</Link> to skip straight to your saved
               profile.
             </p>
           )}

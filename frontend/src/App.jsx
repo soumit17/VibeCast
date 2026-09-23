@@ -17,7 +17,7 @@ function Nav() {
       <nav className="nav">
         <Link className="nav-brand" to="/">
           <span className="dot" />
-          Soundtrack
+          VibeCast
         </Link>
         <div className="nav-links">
           {!loading && user ? (

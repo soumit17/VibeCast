@@ -57,7 +57,7 @@ export default function ShareCard({ mood }) {
     // Brand
     ctx.fillStyle = "rgba(245,245,247,0.85)";
     ctx.font = "700 22px 'Space Grotesk', sans-serif";
-    ctx.fillText("SOUNDTRACK", 56, 90);
+    ctx.fillText("VIBECAST", 56, 90);
 
     // Mood word
     ctx.fillStyle = "#f5f5f7";
