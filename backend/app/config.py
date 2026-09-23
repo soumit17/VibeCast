@@ -8,7 +8,7 @@ class Settings(BaseSettings):
     anthropic_api_key: str = ""
     cors_origins: str = "http://localhost:5173"
     public_base_url: str = "http://localhost:5173"
-    database_url: str = "sqlite:///./soundtrack.db"
+    database_url: str = "sqlite:///./vibecast.db"
     access_token_expire_minutes: int = 60 * 24 * 7  # 7 days, fine for a demo
 
     # Bidding: bids add weight to ranking rather than guaranteeing top position (spec §4/§9.1)

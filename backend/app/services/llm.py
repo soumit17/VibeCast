@@ -11,7 +11,7 @@ from anthropic import Anthropic, AnthropicError
 
 from app.config import settings
 
-logger = logging.getLogger("soundtrack.llm")
+logger = logging.getLogger("vibecast.llm")
 
 MODEL = "claude-sonnet-4-5"
 

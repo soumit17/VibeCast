@@ -7,7 +7,7 @@ from app.routers import auth, dj, guests, me, queue, rooms, venues
 
 Base.metadata.create_all(bind=engine)
 
-app = FastAPI(title="Soundtrack Platform API")
+app = FastAPI(title="VibeCast API")
 
 app.add_middleware(
     CORSMiddleware,

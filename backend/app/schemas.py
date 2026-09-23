@@ -155,3 +155,10 @@ class MoodOut(BaseModel):
     energy: float
     tempo: float
     summary: str
+
+
+class PersonalTrackOut(BaseModel):
+    title: str
+    artist: str
+    preview_url: str
+    cover_url: str | None
