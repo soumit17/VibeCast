@@ -8,12 +8,13 @@ from app.database import get_db
 from app.models import GuestProfile, Room, User
 from app.schemas import GuestJoinRequest, GuestOut, TasteBlendEntry
 from app.services.music_connect import connect_music_library
+from app.ws import manager
 
 router = APIRouter(tags=["guests"])
 
 
 @router.post("/api/rooms/{room_id}/join", response_model=GuestOut)
-def join_room(
+async def join_room(
     room_id: str,
     payload: GuestJoinRequest,
     current_user: User | None = Depends(get_optional_user),
@@ -40,6 +41,17 @@ def join_room(
     db.add(guest)
     db.commit()
     db.refresh(guest)
+
+    # The venue dashboard shows guest count and the blended taste; without this
+    # broadcast it keeps showing "0 connected" until the page is reloaded.
+    await manager.broadcast(
+        room_id,
+        {
+            "type": "guest_update",
+            "guest_count": db.query(GuestProfile).filter(GuestProfile.room_id == room_id).count(),
+            "taste_blend": [entry.model_dump() for entry in taste_blend(room_id, db)],
+        },
+    )
     return guest
 
 
